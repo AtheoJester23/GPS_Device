@@ -51,18 +51,18 @@ void setup()
     Serial.println("Connection to Firebase failed, retrying in 10 seconds...");
     delay(10000);  // Wait before retrying
   }
-  Serial.println("Connected to firebase");
+  Serial.println("Connected to Firebase");
 
-  // Check if "b" exists, then post if it doesn't
-  checkAndPostIfBDoesNotExist();
+  // Check if "b" exists, then put data if it doesn't
+  checkAndPutIfBDoesNotExist();
 }
 
 void loop()
 {
-  
+  // No loop needed
 }
 
-void checkAndPostIfBDoesNotExist()
+void checkAndPutIfBDoesNotExist()
 {
   String response = GetFirebase("/b", &http_client);
 
@@ -73,10 +73,10 @@ void checkAndPostIfBDoesNotExist()
     // Data for "b"
     String jsonData = "{\"name\":\"bilog\",\"age\":\"4months old\",\"email\":\"none\"}";
     
-    // Post the object "b"
-    PostFirebase("/b", jsonData, &http_client);
+    // PUT the object "b" (replaces the entire object at this path)
+    PutFirebase("/b", jsonData, &http_client);
   } else {
-    Serial.println("\"b\" already exists, no need to post.");
+    Serial.println("\"b\" already exists, no need to put.");
   }
 
   http_client.stop(); // Shutdown the connection
@@ -110,7 +110,7 @@ String GetFirebase(const String & path , HttpClient* http)
   return response;
 }
 
-void PostFirebase(const String & path, const String & data, HttpClient* http)
+void PutFirebase(const String & path, const String & data, HttpClient* http)
 {
   String url;
   
@@ -121,14 +121,14 @@ void PostFirebase(const String & path, const String & data, HttpClient* http)
   url += path + ".json";
   url += "?auth=" + FIREBASE_AUTH;
 
-  // Use POST request to create "b"
-  http->post(url, "application/json", data);
+  // Use PUT request to directly create "b" without auto-generated subkeys
+  http->put(url, "application/json", data);
 
   int statusCode = http->responseStatusCode();
-  Serial.print("POST status code: ");
+  Serial.print("PUT status code: ");
   Serial.println(statusCode);
 
   String response = http->responseBody();
-  Serial.print("POST response: ");
+  Serial.print("PUT response: ");
   Serial.println(response);
 }
