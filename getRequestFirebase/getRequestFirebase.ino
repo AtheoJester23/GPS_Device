@@ -31,8 +31,6 @@ void setup()
   Serial.begin(9600);
   sim800.begin(9600);
 
-  sim800.println(AT);
-
   // Restart the modem 
   while (!modem.restart()) {
     Serial.println("Failed to restart modem, trying again in 10 seconds...");
