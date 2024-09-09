@@ -2,14 +2,12 @@
 
 #include <TinyGsmClient.h> //https://github.com/vshymanskyy/TinyGSM
 #include <ArduinoHttpClient.h> //https://github.com/arduino-libraries/ArduinoHttpClient
-
 #include <TinyGPS++.h>
-#include <TinyGPSPlus.h>
-
-TinyGPSPlus gps;
-
+#include <AltSoftSerial.h>
 #include <SoftwareSerial.h>
 SoftwareSerial sim800(4, 2);
+ 
+
  
 const char FIREBASE_HOST[]  = "siml-19451-default-rtdb.firebaseio.com";
 const String FIREBASE_AUTH  = "G3ehgtFyaYSN3LJGpcGIe5OrWxLM6mJ3lKEGe3Ir";
@@ -26,6 +24,9 @@ TinyGsm modem(sim800);
 TinyGsmClientSecure gsm_client_secure_modem(modem, 0);
 HttpClient http_client = HttpClient(gsm_client_secure_modem, FIREBASE_HOST, SSL_PORT);
 
+
+// TinyGPSPlus gps;
+// AltSoftSerial gpsSerial; 
  
 void setup()
 {
@@ -49,6 +50,7 @@ void setup()
   String modemInfo = modem.getModemInfo();
   Serial.print("Modem: ");
   Serial.println(modemInfo);
+  http_client.setHttpResponseTimeout(10 * 1000); //^0 secs timeout
 }
  
 void loop()

@@ -5,6 +5,7 @@
 #include <TinyGPSPlus.h> // GPS library
 #include <EEPROM.h>
 #include <SoftwareSerial.h>
+#include <AltSoftSerial.h>
 
 // Firebase settings
 const char FIREBASE_HOST[]  = "siml-19451-default-rtdb.firebaseio.com";
@@ -19,7 +20,7 @@ char pass[] = "";
 
 // GSM and GPS pins
 SoftwareSerial sim800(4, 2);  // RX, TX for SIM800
-SoftwareSerial gpsSerial(8, 6);  // RX, TX for GPS
+AltSoftSerial gpsSerial;  // RX, TX for GPS
 
 TinyGsm modem(sim800);
 TinyGPSPlus gps;  // GPS object

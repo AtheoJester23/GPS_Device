@@ -29,7 +29,7 @@ unsigned long previousMillis = 0;
 void setup()
 {
   Serial.begin(9600);
-  sim800.begin(9600);
+  sim800.begin(4800);
 
   // Restart the modem 
   while (!modem.restart()) {
@@ -104,4 +104,3 @@ void GetFirebase(const char* method, const String & path ,  HttpClient* http)
   }
  
 }
- 
