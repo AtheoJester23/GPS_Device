@@ -1,3 +1,5 @@
+#include <AltSoftSerial.h>
+
 // Select your modem:
 #define TINY_GSM_MODEM_SIM800
 #include <TinyGPS++.h>
@@ -5,29 +7,31 @@
 #include <ArduinoHttpClient.h>
 #include <SoftwareSerial.h>
 
-
 #define SerialMon Serial
 #define DEVICE_ID "sim800gps00001"
 #define modemBAUD 4800
 #define gpsBAUD 9600
 SoftwareSerial SerialAT(4, 2); // RX, TX serial modem
-SoftwareSerial ss(8, 9); // RX,TX serial GPS
 
 // Internet setting
 const char apn[]  = "smartlte"; // GSM apn 
 const char user[] = "";
 const char pass[] = "";
 
-//Firebase setting 
+// Firebase setting 
 const char server[] = "siml-19451-default-rtdb.firebaseio.com";
 const int  port = 443;
-const String UPDATE_PATH = "gps_devices/"+ String(DEVICE_ID); // firebase root table
+const String UPDATE_PATH = "gps_devices/" + String(DEVICE_ID); // firebase root table
 
-//global variables
-String fireData="";
+// global variables
+int count = 0;
+String fireData = "";
+
+// LED pins
+int redPin = 12;
+int greenPin = 11;
 
 TinyGsm modem(SerialAT);
-
 TinyGsmClientSecure client(modem);
 HttpClient https(client, server, port);
 
@@ -38,30 +42,37 @@ const unsigned long updateInterval = 900000; // 15 minutes in milliseconds (15 *
 
 void setup() {
   // Set console baud rate
-  SerialMon.begin(115200);
+  SerialMon.begin(9600);
   delay(10);
+
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  analogWrite(redPin, 255);
   initializeModem(); // check modem communication
   tesKoneksi(); // test internet connection
-  ss.begin(gpsBAUD); // open gps serial
 
+  int batteryLevel = modem.getBattPercent();
+  SerialMon.println(batteryLevel);
+  
+  Serial.begin(gpsBAUD); // Begin hardware serial for GPS
 }
 
 void loop() {
 
-  if(ss.isListening()){
-    //Serial.println("gps listening");
-    while(fireData.equals("")){
+  if (Serial.available() > 0) {  // Check if GPS data is available on hardware serial
+    while (fireData.equals("")) {
       scan();
     }
+    analogWrite(greenPin, 255);
   }
-  else{
-    //Serial.println("gps not listening");
-    fireData="";
-    ss.begin(gpsBAUD); 
+  else {
+    fireData = "";
+    Serial.begin(gpsBAUD); // Ensure GPS hardware serial is active
+    analogWrite(greenPin, 0);
   } 
 }
 
-//send data to firebase
+// Send data to Firebase
 void sendData(const String & path , const String & data, HttpClient* http) {
 
   http->connectionKeepAlive(); // Currently, this is needed for HTTPS
@@ -72,7 +83,6 @@ void sendData(const String & path , const String & data, HttpClient* http) {
   url += path + ".json";
   url += "?print=silent";
   
-
   String contentType = "application/json";
 
   http->patch(url, contentType, data);
@@ -85,65 +95,69 @@ void sendData(const String & path , const String & data, HttpClient* http) {
   
   if (!http->connected()) {
     Serial.println();
-    http->stop();// Shutdown
-    Serial.println("HTTP POST disconnected");
+    http->stop(); // Shutdown
     SerialAT.begin(modemBAUD);
     tesKoneksi();
-    fireData="";
-    ss.begin(gpsBAUD);
+    fireData = "";
+    Serial.begin(gpsBAUD); // Restart GPS serial if disconnected
   }
 }
 
-//scanning gps location
-void scan(){
-  while (ss.available() > 0)
-    if (gps.encode(ss.read()))
+// Scanning GPS location
+void scan() {
+  while (Serial.available() > 0){  // Reading from hardware serial
+
+  // Read bytes from the GPS module
+  gps.encode(Serial.read());
+
+  SerialMon.println("The Code Got Here...");
+  delay(5000);
+    if (gps.location.isUpdated()){
       displayInfo(); 
+    }
+  }
 }
 
-void displayInfo()
-{
-  if (gps.location.isValid())
-  {
+void displayInfo() {
+  if (gps.location.isValid()) {
     data();
   }
-  else
-  {
+  else {
     data();
   }
-  //Serial.println();
   SerialAT.begin(modemBAUD);
   updateData();   
 }
 
-// connect to internet 
-void tesKoneksi(){
+// Connect to internet 
+void tesKoneksi() {
   SerialMon.print(F("Connecting to apn: "));
   SerialMon.println(apn);
+  
   while (!modem.gprsConnect(apn, user, pass)) {
-    Serial.println("GPRS connection failed, retrying in 10 seconds...");
+    SerialMon.println("GPRS connection failed, retrying in 10 seconds...");
     delay(10000);  // Wait before retrying
   }
-  Serial.println("GPRS connected");
+  SerialMon.println("GPRS connected");
 }
 
-//updata data firebase
-void updateData(){
+// Update data to Firebase
+void updateData() {
   sendData(UPDATE_PATH, fireData, &https);
-  //kirimData();
 }
 
-//initialize modem sim800
-void initializeModem(){
+// Initialize modem SIM800
+void initializeModem() {
   SerialAT.begin(modemBAUD);
   delay(3000);
   SerialMon.println(F("Initializing modem..."));
+
   while (!modem.restart()) {
     Serial.println("Failed to restart modem, trying again in 10 seconds...");
     delay(10000);
   }
   Serial.println("Modem successfully restarted");
-  
+
   String modemInfo = modem.getModemInfo();
   SerialMon.print(F("Modem: "));
   SerialMon.println(modemInfo);
@@ -151,13 +165,9 @@ void initializeModem(){
   delay(10000);
 }
 
-//get gps data
-void data(){
-    // to delay send
-    // SerialMon.println("Wait for 30 sec...");
-    // delay(10000);
-
-    fireData="";
+// Get GPS data
+void data() {
+    fireData = "";
 
     // Adjust the time by adding 4 hours (or adjust to your local offset)
     int adjustedHour = gps.time.hour() + 8;
@@ -174,12 +184,5 @@ void data(){
     fireData += " \"time\" : \"" + String(adjustedHour) + ":" +
                                   String(gps.time.minute()) + ":" +
                                   String(gps.time.second()) + "\"";
-    // // Check if 15 minutes have passed
-    // if (millis() - lastUpdateTime > updateInterval) {
-    //     // Add last latitude and last longitude
-    //     fireData += ", \"lastLatitude\" : " + String(gps.location.lat(), 6) + ",";
-    //     fireData += " \"lastLongitude\" : " + String(gps.location.lng(), 6);
-    //     lastUpdateTime = millis();  // Reset the last update time
-    // }
     fireData += "}";
 }

@@ -8,7 +8,7 @@ SoftwareSerial sim800(4, 2);
  
 
  
-const char FIREBASE_HOST[]  = "siml-19451-default-rtdb.firebaseio.com";
+const char FIREBASE_HOST[]  = "testing-26d04-default-rtdb.firebaseio.com";
 const String FIREBASE_AUTH  = "G3ehgtFyaYSN3LJGpcGIe5OrWxLM6mJ3lKEGe3Ir";
 const String FIREBASE_PATH  = "/";
 const int SSL_PORT          = 443;
@@ -16,7 +16,7 @@ const int SSL_PORT          = 443;
 char apn[]  = "smartlte";  // type your APN here
 char user[] = "";
 char pass[] = "";
- 
+
  
 TinyGsm modem(sim800);
  
@@ -84,13 +84,15 @@ void GetFirebase(const char* method, const String & path ,  HttpClient* http)
     url = "/";
   }
   url += path + ".json";
+  url += "?print=silent";
+
   url += "?auth=" + FIREBASE_AUTH;
 
   http->get(url);
  
- //statusCode = http->responseStatusCode();
- // Serial.print("Status code: ");
-  //Serial.println(statusCode);
+//  statusCode = http->responseStatusCode();
+//  Serial.print("Status code: ");
+//   Serial.println(statusCode);
   response = http->responseBody();
  
   Serial.print("Response: ");
