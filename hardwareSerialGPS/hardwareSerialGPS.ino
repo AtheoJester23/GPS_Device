@@ -32,8 +32,21 @@ String fireData="";
 // Create a TinyGPS object
 TinyGPSPlus gps;
 
+int redPin = 12;    // Red LED pin
+int greenPin = 11;  // Green LED pin
+int bluePin = 10;   // Blue LED pin (not used)
 
 void setup() {
+  // Set the RGB pins as output
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+  
+  // Turn off all LEDs initially
+  digitalWrite(redPin, 0);
+  digitalWrite(greenPin, 0);
+  digitalWrite(bluePin, 0);
+
   // Start hardware serial for communication with the GPS module and serial monitor
   Serial.begin(9600); // Serial monitor
   delay(10);
@@ -49,6 +62,7 @@ void setup() {
 
 void loop() {
   if(Serial.available()) {
+    digitalWrite(greenPin, 255);  // Turn on green LED
     while(fireData.equals("")){
       scan();
     }
@@ -60,6 +74,7 @@ void initializeModem(){
   SerialAT.begin(4800);
   delay(3000);
   Serial.println(F("Initializing modem..."));
+  digitalWrite(bluePin, 255);  // Turn on green LED
   while (!modem.restart()) {
     Serial.println("Failed to restart modem, trying again in 10 seconds...");
     delay(10000);
@@ -77,16 +92,21 @@ void initializeModem(){
 void connectInternet(){
   Serial.print(F("Connecting to apn: "));
   Serial.println(apn);
+  digitalWrite(bluePin, 255);  // Turn on green LED
   while (!modem.gprsConnect(apn, user, pass)) {
     Serial.println("GPRS connection failed, retrying in 10 seconds...");
     delay(10000);  // Wait before retrying
   }
   Serial.println("GPRS connected");
+  digitalWrite(bluePin, 0);
+  delay(1000);
+  digitalWrite(greenPin, 1);
 }
 
 // scanning gps location
 void scan(){
   while (Serial.available() > 0){
+    digitalWrite(greenPin, 255);
     if (gps.encode(Serial.read())){
       displayInfo();
     }
@@ -95,10 +115,19 @@ void scan(){
 
 //get gps data
 void data(){
+    digitalWrite(greenPin, 255);
+
     int batteryLevel = modem.getBattPercent();
     Serial.print("Battery Level: ");
     Serial.print(batteryLevel);
     Serial.println("%");
+
+    if(batteryLevel <= 54){
+      digitalWrite(greenPin, 0);
+      digitalWrite(redPin, 255);
+    }else{
+      digitalWrite(redPin, 0);
+    }
     delay(1000);
 
     Serial.println("Umabot na dito...");
@@ -149,6 +178,8 @@ void sendData(const String & path , const String & data, HttpClient* http) {
   if (!http->connected()) {
     Serial.println();
     http->stop();// Shutdown
+    digitalWrite(greenPin, 0);
+    digitalWrite(redPin, 0);
     Serial.println("HTTP POST disconnected");
     SerialAT.begin(modemBAUD);
     connectInternet();

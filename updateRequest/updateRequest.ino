@@ -7,7 +7,6 @@
 SoftwareSerial sim800(4, 2);
 
 const char FIREBASE_HOST[]  = "siml-19451-default-rtdb.firebaseio.com";
-const String FIREBASE_AUTH  = "G3ehgtFyaYSN3LJGpcGIe5OrWxLM6mJ3lKEGe3Ir";
 const String FIREBASE_PATH  = "/";  // Update this path to where you want to post the data
 const int SSL_PORT          = 443;
 
@@ -79,7 +78,6 @@ void PostFirebase(const char* method, const String & path, const String & data, 
     url = "/";
   }
   url += path + ".json";
-  url += "?auth=" + FIREBASE_AUTH;
 
   http->patch(url, "application/json", data);  // Use PATCH request for updating
 
