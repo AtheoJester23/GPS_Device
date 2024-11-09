@@ -5,7 +5,6 @@
 #include <ArduinoHttpClient.h>
 #include <TinyGsmClient.h>
 
-#define DEVICE_ID "12345678902"
 #define modemBAUD 4800
 #define gpsBAUD 9600
 
@@ -17,7 +16,7 @@ const char apn[]  = "smartlte";
 const char user[] = "";
 const char pass[] = "";
 
-const char server[] = "testing-26d04-default-rtdb.firebaseio.com";
+const char server[] = "gps-pet-tracker-v1-default-rtdb.firebaseio.com";
 const int  port = 443;
 const String UPDATE_PATH = "/ArduinoDeviceId/12345678902";
 
@@ -31,12 +30,7 @@ int redPin = 12;
 int greenPin = 11; 
 int bluePin = 10;  
 
-unsigned long lastBalanceCheck = 0;
-String operatorName = "";
-
-bool balanceChecked = true;
-
-String secondToLastLine = ""; 
+String operatorName;
 
 void setup() {
   pinMode(A2, OUTPUT);
@@ -69,20 +63,24 @@ void loop() {
 void initializeModem(){
   digitalWrite(A2, HIGH);
   SerialAT.begin(4800);
-
-  SerialAT.println(F("AT"));
-
   delay(3000);
   Serial.println(F("Initializing modem..."));
-  Led(bluePin, 5);
+  Led(bluePin, 3);
   while (!modem.restart()) {
     Serial.println(F("Failed to restart modem, trying again in 10 seconds..."));
     delay(10000);
   }
   Serial.println(F("Modem successfully restarted"));
+
+  SerialAT.println("AT+CNTP=1");
+  delay(1000);
+
 }
 
 void connectInternet(){
+  SerialAT.println("AT+CNTP=1");
+  delay(5000);
+  Led(bluePin, 3);
   while (!modem.gprsConnect(apn, user, pass)) {
     Led(bluePin, 5);
     Serial.println(F("GPRS connection failed, retrying in 10 seconds..."));
@@ -90,17 +88,7 @@ void connectInternet(){
   }
   Serial.println(F("GPRS connected"));
 
-  delay(10000);
-  getDataBal();
-  SerialAT.println(F("AT+CUSD=2"));
-  delay(5000);
-
-  SerialAT.begin(4800);
-
-  SerialAT.println(F("AT"));
-  delay(10000);
-
-  Led(bluePin, 5);
+  sendATCommand("AT+COPS?");
 }
 
 void scan(){
@@ -112,27 +100,26 @@ void scan(){
 }
 
 void data(){
-    if(operatorName == ""){
-      sendATCommand("AT+COPS?");
-      delay(1000);
-    }
-
     int batteryLevel = modem.getBattPercent();
-    Serial.print(F("Battery Level: "));
-    Serial.print(batteryLevel);
-    Serial.println(F("%"));
 
     String date = "";        
     String hourMinute = "";
 
-    // Print the operator name
-    Serial.print(F("Operator Name: "));
-    Serial.println(operatorName);
+    if (modem.testAT()) {      
+      modem.sendAT(GF("+CCLK?"));
 
+      modem.stream.readStringUntil('\n');
+      String timeResponse = modem.stream.readStringUntil('\n');
+    
+      if (timeResponse.indexOf("+CCLK:") != -1) {
+        int start = timeResponse.indexOf("\"") + 1;
+        int end = timeResponse.indexOf("\"", start);
+        String dateTime = timeResponse.substring(start, end);
+        
+        String date = dateTime.substring(0, dateTime.indexOf(","));
+        String time = dateTime.substring(dateTime.indexOf(",") + 1);
 
-
-    if (modem.testAT()) {
-      Serial.println(F("SIM800L connected successfully!"));
+        String hourMinute = time.substring(0, 5);
 
         if(batteryLevel <= 15){
           digitalWrite(greenPin, 0);
@@ -143,9 +130,7 @@ void data(){
           digitalWrite(A4, LOW);
           digitalWrite(A2, HIGH);
         }
-        delay(500);
-
-        Serial.println(F("Umabot na dito..."));
+        delay(1000);
 
         fireData="";
 
@@ -155,12 +140,15 @@ void data(){
         }
 
         fireData += "{";
-        fireData += "\"latitude\" : " + String(gps.location.lat(), 6) + ",";
-        fireData += "\"longitude\" : " + String(gps.location.lng(), 6) + ",";
-        fireData += "\"status\" : \"Online\",";
+        fireData += " \"latitude\" : " + String(gps.location.lat(), 6) + ","; 
+        fireData += " \"longitude\" : " + String(gps.location.lng(), 6) + ",";
+        fireData += " \"status\" : \"Online\",";
+        fireData += " \"date\" : \"" + date + "\",";
+        fireData += " \"time\" : \"" + hourMinute + "\",";
         fireData += " \"sim\" : \"" + operatorName + "\",";
-        fireData += "\"battery\" : " + String(batteryLevel);
+        fireData += " \"battery\" : " + String(batteryLevel);
         fireData += "}";
+      }
     } else {
       Serial.println(F("Failed to communicate with SIM800L"));
     }
@@ -183,8 +171,6 @@ void sendData(const String & path , const String & data, HttpClient* http) {
   http->get(url);
 
   int statusCode = http->responseStatusCode();
-  Serial.print(F("Status code (GET): "));
-  Serial.println(statusCode);
 
   if (statusCode > 0) {
     String response = http->responseBody();
@@ -194,7 +180,7 @@ void sendData(const String & path , const String & data, HttpClient* http) {
       http->stop();
       return false;
     }
-    Serial.println(F("The path does exist"));
+    Serial.println(F("Uploading..."));
 
     http->patch(url, "application/json", data);
   }
@@ -210,18 +196,18 @@ void sendData(const String & path , const String & data, HttpClient* http) {
 
 void updateData(){
   sendData(UPDATE_PATH, fireData, &https);
+  Led(greenPin, 3);
 }
 
 void displayInfo(){
   if(gps.location.isValid()){
     data();
-    Led(greenPin, 5);
     updateData();
   }else{
     Serial.println(F("Wait di pa valid yung GPS data..."));
   }
+  delay(5000);
   fireData="";
-  balanceChecked = false;  // Reset flag after Firebase update
 }
 
 void Led(int pin, int num) {
@@ -298,84 +284,4 @@ String extractOperatorName(const String& response) {
         }
     }
     return detectedOperator;
-}
-
-String captureData() {
-  unsigned long startTime = millis();
-  int cusdCount = 0;  // Counter to track occurrences of "+CUSD"
-  String extractedData = ""; // Temporary storage for extracted data
-
-  while (millis() - startTime < 30000) {  // Adjust timeout as needed
-    if (SerialAT.available()) {
-      String response = SerialAT.readString();
-
-      // Check for "+CUSD" response
-      if (response.indexOf("+CUSD") != -1) {
-        cusdCount++;  // Increment counter on finding "+CUSD"
-
-        if (cusdCount == 2) {  // Process the second "+CUSD" only
-          int backIndex = response.indexOf("0) Back");  // Locate "0) Back"
-          if (backIndex != -1) {
-            // Find the newline just before "0) Back"
-            int startIndex = response.lastIndexOf('\n', backIndex - 1);
-            if (startIndex != -1) {
-              // Find the previous newline, indicating the start of the target line
-              int endIndex = startIndex;
-              startIndex = response.lastIndexOf('\n', startIndex - 1);
-              if (startIndex != -1) {
-                // Extract the line above "0) Back"
-                extractedData = response.substring(startIndex + 1, endIndex);
-                extractedData.trim();  // Remove any leading/trailing whitespace
-                Serial.print("Data: ");
-                Serial.println(extractedData);
-                return extractedData;  // Return the cleaned data
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  Serial.println("No valid data line found before '0) Back'.");
-  return "";
-}
-
-
-void getDataBal() {
-  // Enable USSD mode
-  SerialAT.println(F("AT+CUSD=1"));
-  delay(1000);
-
-  // Step 1: Send balance check command
-  SerialAT.println(F("AT+CUSD=1,\"*123#\""));
-  delay(5000);  // Additional delay for processing
-
-  // Step 2: Send option "8" if Step 1 succeeded
-  SerialAT.println(F("AT+CUSD=1,\"8\""));
-  unsigned long startTime = millis();
-  bool step2Confirmed = false;
-
-  // Wait for expected response for Step 2
-  while (millis() - startTime < 20000) {  // 10 seconds timeout
-    if (SerialAT.available()) {
-      String response = SerialAT.readString();
-      if (response.indexOf("+CUSD") != -1) {  // Check for option "8" response
-        Serial.println("Option '8' response received.");
-        step2Confirmed = true;
-        break;
-      }
-    }
-  }
-
-  if (!step2Confirmed) {
-    Serial.println("Failed to receive option '8' response.");
-    return;  // Exit if step 2 fails
-  }
-  delay(1000);  // Additional delay for processing
-
-  // Step 3: Send option "1" if Step 2 succeeded
-  SerialAT.println(F("AT+CUSD=1,\"1\""));
-
-  // Capture balance after final response
-  secondToLastLine = captureData();
 }

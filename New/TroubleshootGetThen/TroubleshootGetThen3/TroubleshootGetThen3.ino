@@ -19,7 +19,7 @@ const char pass[] = "";
 
 const char server[] = "testing-26d04-default-rtdb.firebaseio.com";
 const int  port = 443;
-const String UPDATE_PATH = "/ArduinoDeviceId/12345678902";
+const String UPDATE_PATH = "/ArduinoDeviceId123/12345678932";
 
 HttpClient https(client, server, port);
 
@@ -34,9 +34,9 @@ int bluePin = 10;
 unsigned long lastBalanceCheck = 0;
 String operatorName;
 
-bool balanceChecked = true;
+bool balanceChecked = false;
 
-String secondToLastLine = ""; 
+String balanceData = "";  
 
 void setup() {
   pinMode(A2, OUTPUT);
@@ -69,22 +69,21 @@ void loop() {
 void initializeModem(){
   digitalWrite(A2, HIGH);
   SerialAT.begin(4800);
-  delay(3000);
+
+  SerialAT.println(F("AT"));
+
+  Serial.println(balanceData);
+
   Serial.println(F("Initializing modem..."));
   Led(bluePin, 5);
+
   while (!modem.restart()) {
     Serial.println(F("Failed to restart modem, trying again in 10 seconds..."));
     delay(10000);
   }
   Serial.println(F("Modem successfully restarted"));
-  
-  String modemInfo = modem.getModemInfo();
-  Serial.print(F("Modem: "));
-  Serial.println(modemInfo);
-  Serial.println(F("wait 1 seconds"));
-  delay(1000);
 
-  
+  delay(1000);
 }
 
 void connectInternet(){
@@ -97,8 +96,6 @@ void connectInternet(){
     delay(10000);
   }
   Serial.println(F("GPRS connected"));
-
-  sendATCommand("AT+COPS?");
 }
 
 void scan(){
@@ -110,15 +107,6 @@ void scan(){
 }
 
 void data(){
-    if (millis() - lastBalanceCheck >= 30000 && !balanceChecked) {
-        lastBalanceCheck = millis();
-        getDataBal();
-        SerialAT.println(F("AT+CUSD=2"));
-        balanceChecked = true; // Set flag after checking balance
-        Serial.print(F("Balance Checked Flag Set: "));
-        Serial.println(balanceChecked);
-    } 
-
     int batteryLevel = modem.getBattPercent();
     Serial.print(F("Battery Level: "));
     Serial.print(batteryLevel);
@@ -133,57 +121,27 @@ void data(){
 
 
 
-    if (modem.testAT()) {
-      Serial.println(F("SIM800L connected successfully!"));
-      
-      modem.sendAT(GF("+CCLK?"));
-
-      modem.stream.readStringUntil('\n');
-      String timeResponse = modem.stream.readStringUntil('\n');
-    
-      if (timeResponse.indexOf("+CCLK:") != -1) {
-        int start = timeResponse.indexOf("\"") + 1;
-        int end = timeResponse.indexOf("\"", start);
-        String dateTime = timeResponse.substring(start, end);
-        
-        String date = dateTime.substring(0, dateTime.indexOf(","));
-        String time = dateTime.substring(dateTime.indexOf(",") + 1);
-
-        String hourMinute = time.substring(0, 5);
-
-        if(batteryLevel <= 15){
-          digitalWrite(greenPin, 0);
-          digitalWrite(A2, LOW);
-          digitalWrite(A4, HIGH);
-        }else{
-          digitalWrite(redPin, 0);
-          digitalWrite(A4, LOW);
-          digitalWrite(A2, HIGH);
-        }
-        delay(500);
-
-        Serial.println(F("Umabot na dito..."));
-
-        fireData="";
-
-        int adjustedHour = gps.time.hour() + 8;
-        if (adjustedHour >= 24) {
-            adjustedHour -= 24; 
-        }
-
-        fireData += "{";
-        fireData += " \"latitude\" : " + String(gps.location.lat(), 6) + ","; 
-        fireData += " \"longitude\" : " + String(gps.location.lng(), 6) + ",";
-        fireData += " \"status\" : \"Online\",";
-        fireData += " \"date\" : \"" + date + "\",";
-        fireData += " \"time\" : \"" + hourMinute + "\",";
-        fireData += " \"sim\" : \"" + operatorName + "\",";
-        fireData += " \"battery\" : " + String(batteryLevel);
-        fireData += "}";
-      }
-    } else {
-      Serial.println(F("Failed to communicate with SIM800L"));
+    if(batteryLevel <= 15){
+      digitalWrite(greenPin, 0);
+      digitalWrite(A2, LOW);
+      digitalWrite(A4, HIGH);
+    }else{
+      digitalWrite(redPin, 0);
+      digitalWrite(A4, LOW);
+      digitalWrite(A2, HIGH);
     }
+    delay(500);
+
+    Serial.println(F("Umabot na dito..."));
+
+    fireData="";
+
+    fireData += "{";
+    fireData += " \"longitude\" : " + String(gps.location.lng(), 6) + ",";
+    fireData += " \"status\" : \"Online\",";
+    fireData += "\"data_balance\" : \"" + balanceData + "\",";
+    fireData += " \"battery\" : " + String(batteryLevel);
+    fireData += "}";
 }
 
 void sendData(const String & path , const String & data, HttpClient* http) {  
@@ -235,16 +193,13 @@ void updateData(){
 void displayInfo(){
   if(gps.location.isValid()){
     data();
-    Led(greenPin, 5);
     updateData();
+    Led(greenPin, 5);
   }else{
     Serial.println(F("Wait di pa valid yung GPS data..."));
   }
   fireData="";
-  balanceChecked = false;  // Reset flag after Firebase update
-  Serial.print("Free memory: ");
-  Serial.print(availableMemory());
-  Serial.println(" bytes");
+  balanceChecked = false;
 }
 
 void Led(int pin, int num) {
@@ -256,125 +211,94 @@ void Led(int pin, int num) {
   }
 }
 
-// Function to send AT command and print the response
-void sendATCommand(const char* command) {
-  Serial.println("Sending command: " + String(command));
-  
-  // Send the AT command
-  SerialAT.println(command);
-  delay(500); // Short delay to give the modem time to start responding
-  
-  String response;
-  unsigned long startTime = millis(); // Track the start time for timeout
-  unsigned long timeout = 2000; // 2 seconds timeout for response reading
-
-  while (millis() - startTime < timeout) { 
-    while (SerialAT.available()) { 
-      char c = SerialAT.read(); 
-      response += c;
-
-      // Check if the response ends with "OK\r\n"
-      if (response.endsWith("OK\r\n")) {
-        // End of response detected, exit the loop
-        break;
-      }
-    }
-
-    // If the response is complete, break the outer timeout loop too
-    if (response.endsWith("OK\r\n")) {
-      break;
+String filterPrintable(String data) {
+  String cleanedData = "";
+  for (int i = 0; i < data.length(); i++) {
+    if (isPrintable(data[i])) {
+      cleanedData += data[i];  // Append only printable characters
     }
   }
-
-  // Print the complete response
-  Serial.print(F("Response: "));
-  Serial.println(response);
-
-  // Extract the operator name from the response
-  operatorName = extractOperatorName(response);
-}
-
-// Function to extract the operator name from the response
-String extractOperatorName(const String& response) {
-    String detectedOperator = "";
-
-    // Check if the response contains "+COPS: "
-    int startIndex = response.indexOf("+COPS: ");
-    if (startIndex != -1) {
-        int startQuoteIndex = response.indexOf("\"", startIndex); // Find the starting quote of the operator name
-        int endQuoteIndex = response.indexOf("\"", startQuoteIndex + 1); // Find the ending quote of the operator name
-        if (startQuoteIndex != -1 && endQuoteIndex != -1) {
-            // Extract the full operator name
-            detectedOperator = response.substring(startQuoteIndex + 1, endQuoteIndex); // Extract operator name only
-            
-            // Trim any whitespace (though it's unlikely)
-            detectedOperator.trim(); 
-
-            // Assign the short name based on the operator name
-            if (detectedOperator == "Globe Telecom") {
-                return "Globe";
-            } else if (detectedOperator == "SMART Gold") {
-                return "Smart";
-            } else {
-                return "Unknown"; // Fallback for other operators
-            }
-        }
-    }
-    return detectedOperator;
+  return cleanedData;
 }
 
 String captureData() {
-  String line = "";  // Local variable to hold the balance line
   unsigned long startTime = millis();
-  
+  int cusdCount = 0;  // Counter to track occurrences of "+CUSD"
+  String extractedData = ""; // Temporary storage for extracted data
+
   while (millis() - startTime < 30000) {  // Adjust timeout as needed
     if (SerialAT.available()) {
       String response = SerialAT.readString();
 
-      // Check for "+CMT" response
-      if (response.indexOf("+CMT") != -1) {
-        int lastNewlineIndex = response.lastIndexOf('\n');
-        if (lastNewlineIndex != -1) {
-          int secondToLastNewlineIndex = response.lastIndexOf('\n', lastNewlineIndex - 1);
+      // Check for "+CUSD" response
+      if (response.indexOf("+CUSD") != -1) {
+        cusdCount++;  // Increment counter on finding "+CUSD"
 
-          if (secondToLastNewlineIndex != -1) {
-            line = response.substring(secondToLastNewlineIndex + 1, lastNewlineIndex);
-            line.trim();  // Remove any leading or trailing whitespace
-            Serial.print("Data Balance: ");
-            Serial.println(line);
-            return line;  // Return the balance line once found
+        if (cusdCount == 2) {  // Process the second "+CUSD" only
+          int backIndex = response.indexOf("0) Back");  // Locate "0) Back"
+          if (backIndex != -1) {
+            // Find the newline just before "0) Back"
+            int startIndex = response.lastIndexOf('\n', backIndex - 1);
+            if (startIndex != -1) {
+              // Find the previous newline, indicating the start of the target line
+              int endIndex = startIndex;
+              startIndex = response.lastIndexOf('\n', startIndex - 1);
+              if (startIndex != -1) {
+                // Extract the line above "0) Back"
+                extractedData = response.substring(startIndex + 1, endIndex);
+                extractedData.trim();  // Remove any leading/trailing whitespace
+                
+                // Filter non-printable characters
+                extractedData = filterPrintable(extractedData);
+                
+                Serial.print("Data: ");
+                Serial.println(extractedData);
+                return extractedData;  // Return the cleaned data
+              }
+            }
           }
         }
       }
     }
   }
-  Serial.println(F("No valid second-to-last line found in the response."));
+  Serial.println("No valid data line found before '0) Back'.");
 }
 
 void getDataBal() {
   // Enable USSD mode
   SerialAT.println(F("AT+CUSD=1"));
+  delay(1000);
   
   // Check balance
   SerialAT.println(F("AT+CUSD=1,\"*123#\""));
+  delay(7000);
   
   // Navigate through USSD options if needed
-  delay(5000);  // Wait for response before sending next command
   SerialAT.println(F("AT+CUSD=1,\"8\""));
+  unsigned long startTime = millis();
+  bool step2Confirmed = false;
+
+  // Wait for expected response for Step 2
+  while (millis() - startTime < 20000) {  // 10 seconds timeout
+    if (SerialAT.available()) {
+      String response = SerialAT.readString();
+      if (response.indexOf("+CUSD") != -1) {  // Check for option "8" response
+        Serial.println("Option '8' response received.");
+        step2Confirmed = true;
+        break;
+      }
+    }
+  }
   
-  delay(3000);  // Adjust delay based on response time
+  if (!step2Confirmed) {
+    Serial.println("Failed to receive option '8' response.");
+    return;  // Exit if step 2 fails
+  }
+  delay(2000);  // Additional delay for processing
+
   SerialAT.println(F("AT+CUSD=1,\"1\""));
 
   // Capture balance and store in global variable
-  secondToLastLine = captureData();
-}
-
-// Function to check available free memory
-int availableMemory() {
-  int size = 2048;  // Maximum SRAM size for ATmega328p is 2048 bytes
-  byte *buf;
-  while ((buf = (byte *) malloc(--size)) == NULL);  // Decrease size until malloc is successful
-  free(buf);  // Free allocated memory
-  return size;
+  balanceData = captureData();
 }
 
