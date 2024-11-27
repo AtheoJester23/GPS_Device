@@ -18,31 +18,37 @@ const char pass[] = "";
 
 const char server[] = "gps-pet-tracker-v1-default-rtdb.firebaseio.com";
 const int  port = 443;
-const String UPDATE_PATH = "/ArduinoDeviceId/12345678902";
+const String UPDATE_PATH = "/ArduinoDeviceId/12345678901";
 
 HttpClient https(client, server, port);
 
 String fireData="";
 
 TinyGPSPlus gps;
-
-int redPin = 12;  
-int greenPin = 11; 
+ 
+int redPin = 11; 
 int bluePin = 10;  
+const int redPin2 = 7;
+const int greenPin2 = 6;
 
-String operatorName;
+float lat = 1;
+float lng = 1;
+
+float prevLat = 0;
+float prevLng = 0;
+
+int batteryLevel = 0;
+int notUnder = 0;
 
 void setup() {
-  pinMode(A2, OUTPUT);
-  pinMode(A4, OUTPUT);
+  pinMode(greenPin2, OUTPUT);
+  pinMode(redPin2, OUTPUT);
 
   pinMode(redPin, OUTPUT);
-  pinMode(greenPin, OUTPUT);
   pinMode(bluePin, OUTPUT);
   
-  digitalWrite(redPin, 0);
-  digitalWrite(greenPin, 0);
-  digitalWrite(bluePin, 0);
+  analogWrite(redPin, 0);
+  analogWrite(bluePin, 0);
 
   Serial.begin(9600);
   delay(10);
@@ -61,20 +67,28 @@ void loop() {
 }
 
 void initializeModem(){
-  digitalWrite(A2, HIGH);
+  analogWrite(greenPin2, 4);
+
   SerialAT.begin(4800);
+  
   delay(3000);
   Serial.println(F("Initializing modem..."));
   Led(bluePin, 3);
   while (!modem.restart()) {
     Serial.println(F("Failed to restart modem, trying again in 10 seconds..."));
-    delay(10000);
+    delay(5000);
   }
   Serial.println(F("Modem successfully restarted"));
 
-  SerialAT.println("AT+CNTP=1");
-  delay(1000);
+  batteryLevel = modem.getBattPercent();
 
+  if(batteryLevel <= 15){
+    analogWrite(greenPin2, 0);
+    analogWrite(redPin2, 128);
+  }else{
+    analogWrite(redPin2, 0);
+    analogWrite(greenPin2, 4);
+  }
 }
 
 void connectInternet(){
@@ -84,11 +98,9 @@ void connectInternet(){
   while (!modem.gprsConnect(apn, user, pass)) {
     Led(bluePin, 5);
     Serial.println(F("GPRS connection failed, retrying in 10 seconds..."));
-    delay(10000);
+    delay(5000);
   }
   Serial.println(F("GPRS connected"));
-
-  sendATCommand("AT+COPS?");
 }
 
 void scan(){
@@ -100,7 +112,7 @@ void scan(){
 }
 
 void data(){
-    int batteryLevel = modem.getBattPercent();
+    batteryLevel = modem.getBattPercent();
 
     String date = "";        
     String hourMinute = "";
@@ -122,15 +134,13 @@ void data(){
         String hourMinute = time.substring(0, 5);
 
         if(batteryLevel <= 15){
-          digitalWrite(greenPin, 0);
-          digitalWrite(A2, LOW);
-          digitalWrite(A4, HIGH);
+          analogWrite(greenPin2, 0);
+          analogWrite(redPin2, 128);
         }else{
-          digitalWrite(redPin, 0);
-          digitalWrite(A4, LOW);
-          digitalWrite(A2, HIGH);
+          analogWrite(redPin2, 0);
+          analogWrite(greenPin2, 4);
         }
-        delay(1000);
+        delay(500);
 
         fireData="";
 
@@ -140,13 +150,15 @@ void data(){
         }
 
         fireData += "{";
-        fireData += " \"latitude\" : " + String(gps.location.lat(), 6) + ","; 
-        fireData += " \"longitude\" : " + String(gps.location.lng(), 6) + ",";
+        if(batteryLevel != 0 || batteryLevel >= notUnder){
+          fireData += " \"battery\" : " + String(batteryLevel) + ",";
+        }
+        fireData += " \"latitude\" : " + String(lat, 6) + ",";
+        fireData += " \"longitude\" : " + String(lng, 6) + ",";
         fireData += " \"status\" : \"Online\",";
+        fireData += " \"arduinoIdd\" : \"12345678901\",";
         fireData += " \"date\" : \"" + date + "\",";
-        fireData += " \"time\" : \"" + hourMinute + "\",";
-        fireData += " \"sim\" : \"" + operatorName + "\",";
-        fireData += " \"battery\" : " + String(batteryLevel);
+        fireData += " \"time\" : \"" + hourMinute  + "\"";
         fireData += "}";
       }
     } else {
@@ -156,7 +168,11 @@ void data(){
 
 void sendData(const String & path , const String & data, HttpClient* http) {  
   if (!modem.isGprsConnected()) {
+    analogWrite(bluePin, 0);
+    analogWrite(redPin, 0);
+    delay(500);
     Serial.println(F("GPRS not connected, reconnecting..."));
+    http->stop();
     connectInternet();
   }
 
@@ -168,7 +184,10 @@ void sendData(const String & path , const String & data, HttpClient* http) {
   }
   url += path + ".json";
 
-  http->get(url);
+  String url2;
+  url2 += path + "/arduinoId.json";
+
+  http->get(url2);
 
   int statusCode = http->responseStatusCode();
 
@@ -183,105 +202,52 @@ void sendData(const String & path , const String & data, HttpClient* http) {
     Serial.println(F("Uploading..."));
 
     http->patch(url, "application/json", data);
+
+    prevLat = lat;
+    prevLng = lng;
   }
   
   if (!http->connected()) {
     http->stop();
     Serial.println(F("HTTP POST disconnected"));
-    fireData="";
   }
 
-  http->stop();
 }
 
 void updateData(){
   sendData(UPDATE_PATH, fireData, &https);
-  Led(greenPin, 3);
 }
 
 void displayInfo(){
   if(gps.location.isValid()){
-    data();
-    updateData();
+    analogWrite(bluePin, 0);
+    analogWrite(redPin, 0);
+    delay(500); 
+
+    lng = gps.location.lng();
+    lat = gps.location.lat();
+
+    if(lat != prevLat && lng != prevLng){
+      data();
+      updateData();
+    }
   }else{
     Serial.println(F("Wait di pa valid yung GPS data..."));
   }
-  delay(5000);
+  analogWrite(bluePin, 12);
+  analogWrite(redPin, 7);
+  delay(500);
+  int prevBatt = modem.getBattPercent();
+  notUnder = prevBatt - 2;
+
   fireData="";
 }
 
 void Led(int pin, int num) {
   for (int i = 0; i < num; i++) {
-    digitalWrite(pin, HIGH);  
-    delay(500);               
-    digitalWrite(pin, LOW);   
+    analogWrite(pin, 10);  
+    delay(500);
+    analogWrite(pin, 0);               
     delay(500);               
   }
-}
-
-// Function to send AT command and print the response
-void sendATCommand(const char* command) {
-  Serial.println("Sending command: " + String(command));
-  
-  // Send the AT command
-  SerialAT.println(command);
-  delay(500); // Short delay to give the modem time to start responding
-  
-  String response;
-  unsigned long startTime = millis(); // Track the start time for timeout
-  unsigned long timeout = 2000; // 2 seconds timeout for response reading
-
-  while (millis() - startTime < timeout) { 
-    while (SerialAT.available()) { 
-      char c = SerialAT.read(); 
-      response += c;
-
-      // Check if the response ends with "OK\r\n"
-      if (response.endsWith("OK\r\n")) {
-        // End of response detected, exit the loop
-        break;
-      }
-    }
-
-    // If the response is complete, break the outer timeout loop too
-    if (response.endsWith("OK\r\n")) {
-      break;
-    }
-  }
-
-  // Print the complete response
-  Serial.print(F("Response: "));
-  Serial.println(response);
-
-  // Extract the operator name from the response
-  operatorName = extractOperatorName(response);
-}
-
-// Function to extract the operator name from the response
-String extractOperatorName(const String& response) {
-    String detectedOperator = "";
-
-    // Check if the response contains "+COPS: "
-    int startIndex = response.indexOf("+COPS: ");
-    if (startIndex != -1) {
-        int startQuoteIndex = response.indexOf("\"", startIndex); // Find the starting quote of the operator name
-        int endQuoteIndex = response.indexOf("\"", startQuoteIndex + 1); // Find the ending quote of the operator name
-        if (startQuoteIndex != -1 && endQuoteIndex != -1) {
-            // Extract the full operator name
-            detectedOperator = response.substring(startQuoteIndex + 1, endQuoteIndex); // Extract operator name only
-            
-            // Trim any whitespace (though it's unlikely)
-            detectedOperator.trim(); 
-
-            // Assign the short name based on the operator name
-            if (detectedOperator == "Globe Telecom") {
-                return "Globe";
-            } else if (detectedOperator == "SMART Gold") {
-                return "Smart";
-            } else {
-                return "Unknown"; // Fallback for other operators
-            }
-        }
-    }
-    return detectedOperator;
 }
