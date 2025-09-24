@@ -7,6 +7,11 @@ Description: This repository is dedicated for the codes and related things for t
 ## ⚡ Diagram
 <img src="https://github.com/AtheoJester23/GPS_Device/blob/main/Diagram7.png?raw=true"/>
 
+## 🤖 Actual Device
+<img width="500" src="https://github.com/AtheoJester23/GPS_Device/blob/main/actualDevice.png?raw=true"/>
+<img src="https://github.com/AtheoJester23/GPS_Device/blob/main/actualDevice2.png?raw=true"/>
+<img src="https://github.com/AtheoJester23/GPS_Device/blob/main/actualDevice3.png?raw=true"/>
+
 ## 🛠️ Hardware:
 - Arduino Nano
 - Sim800L
