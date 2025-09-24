@@ -1,8 +1,6 @@
-## 📓 About
+# GPS Device Developed for Our Research Subject
 
-GPS Device Developed for Our Research Subject
-
-Description: This repository is dedicated for the codes and related things for the GPS Device. 
+This repository is dedicated for the codes and related things for the GPS Device. 
 
 ## ⚡ Diagram
 <img src="https://github.com/AtheoJester23/GPS_Device/blob/main/Diagram7.png?raw=true"/>
@@ -30,7 +28,7 @@ Web Communication Protocol:
 
 ## 😎 Project Developer:
 - Atheo Jester Baltazar - GPS Device and Download Page
-- Dexter Jamero - Mobile App
+- <a href="https://github.com/phlwin722">Dexter Jamero</a> - Mobile App
 
 ## 🌐 App Download Page:
 https://www.pettrackerofficial.xyz/
